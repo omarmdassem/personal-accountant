@@ -1,37 +1,30 @@
-Personal Accountant (lokal, Python)
-Idee (kurz)
+# Personal Accountant (lokal, Python)
 
+## Idee (kurz)
 Ein schlankes, lokales Web-Tool, mit dem Nutzer:
-
-Budgets (Einnahmen/Ausgaben) je Kategorie/Subkategorie und Zeitraum definieren,
-
-Transaktionen manuell erfassen oder per CSV importieren,
-
-im Dashboard Budget vs. Ist sowie Kategorie-Breakdowns sehen.
+- **Budgets** (Einnahmen/Ausgaben) je Kategorie/Subkategorie und Zeitraum definieren,
+- **Transaktionen** manuell erfassen oder per **CSV** importieren,
+- im **Dashboard** Budget vs. Ist sowie **Kategorie-Breakdowns** sehen.
 Ziel: schneller Überblick über Geldflüsse – ohne Cloud, ohne komplizierte Einrichtung.
 
-Tech-Stack (festgelegt)
+---
 
-Backend/Web: FastAPI (Python)
+## Tech-Stack (festgelegt)
+- **Backend/Web:** FastAPI (Python)
+- **Templating & UI:** Jinja + **HTMX** (progressive Enhancement), **Tailwind CSS** (CDN)
+- **Charts:** Chart.js (Script-Tag)
+- **ORM/DB:** SQLModel + **SQLite** (lokal), Alembic für Migrationen
+- **Auth:** **Session-basiert** (Secure Cookie, CSRF-Schutz)
+- **Import:** CSV (XLSX später optional)
+- **Währungen:** **Multi-Currency**, Umrechnung über **vom Benutzer gepflegte** FX-Sätze in eine Basiswährung (Standard: EUR)
+- **Betrieb:** ausschließlich **lokal** (kein Deployment)
 
-Templating & UI: Jinja + HTMX (progressive Enhancement), Tailwind CSS (CDN)
+---
 
-Charts: Chart.js (Script-Tag)
-
-ORM/DB: SQLModel + SQLite (lokal), Alembic für Migrationen
-
-Auth: Session-basiert (Secure Cookie, CSRF-Schutz)
-
-Import: CSV (XLSX später optional)
-
-Währungen: Multi-Currency, Umrechnung über vom Benutzer gepflegte FX-Sätze in eine Basiswährung (Standard: EUR)
-
-Betrieb: ausschließlich lokal (kein Deployment)
-
-Architektur (modularer Monolith)
-
+## Architektur (modularer Monolith)
 Schichten & Verantwortlichkeiten:
 
+~~~
 [ Browser (HTML + HTMX) ]
           │  hx-get / hx-post (Formulare, Teilupdates)
           ▼
@@ -48,20 +41,16 @@ Schichten & Verantwortlichkeiten:
           ▼
 [ Daten-Schicht: SQLModel + SQLite ]
    - Alembic Migrationen
+~~~
 
+**Datenmodell (MVP):**
+- `users(id, email, hashed_password, created_at)`
+- `budgets(id, user_id, type, category, subcategory, timeframe, amount, currency)`
+- `transactions(id, user_id, type, category, subcategory, date, amount, currency, notes)`
+- `fx_rates(id, user_id, code, rate_to_base, valid_from)`
 
-Datenmodell (MVP):
-
-users(id, email, hashed_password, created_at)
-
-budgets(id, user_id, type, category, subcategory, timeframe, amount, currency)
-
-transactions(id, user_id, type, category, subcategory, date, amount, currency, notes)
-
-fx_rates(id, user_id, code, rate_to_base, valid_from)
-
-Ordnerstruktur (vereinfacht):
-
+**Ordnerstruktur (vereinfacht):**
+~~~
 app/
   main.py            # App-Wiring, Middleware, Router-Registrierung
   config.py          # Settings aus .env
@@ -72,14 +61,10 @@ app/
   models.py          # SQLModel Tabellen     <-- (folgt)
   templates/         # Jinja-Templates/Partials (HTMX)
   static/            # CSS/JS/Assets
+~~~
 
-
-Prinzipien:
-
-Router → Services → Daten (einzige Richtung; keine Kreuz-Imports).
-
-Server-seitige Validierung; Fehler werden im Template/Partial angezeigt.
-
-Sessions: HttpOnly, SameSite=Lax, CSRF-Token in POST-Forms.
-
-CSV-Import mit Header-Mapping, Dry-Run, Zeilen-Fehlerdatei (errors.csv).
+**Prinzipien:**
+- Router → Services → Daten (einzige Richtung; keine Kreuz-Imports).
+- Server-seitige Validierung; Fehler werden im Template/Partial angezeigt.
+- Sessions: `HttpOnly`, `SameSite=Lax`, CSRF-Token in POST-Forms.
+- CSV-Import mit Header-Mapping, Dry-Run, Zeilen-Fehlerdatei (`errors.csv`).
