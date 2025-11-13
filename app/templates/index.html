@@ -1,5 +1,19 @@
-{% extends "base.html" %} <!-- reuse the shared layout -->
-{% block content %}       <!-- fill the content hole defined in base.html -->
+{% extends "base.html" %}
+{% block content %}
+  <!-- Page heading -->
   <h1 class="text-2xl font-bold mb-4">Welcome</h1>
-  <p class="text-gray-700">Your skeleton is running with server-rendered templates.</p>
+
+  {% if request.session.get('user_id') %}
+    <!-- Logged-in notice -->
+    <div class="mb-4 p-3 bg-green-50 text-green-800 rounded">
+      Du bist eingeloggt. Viel Spaß!
+    </div>
+  {% else %}
+    <!-- Logged-out call-to-action -->
+    <div class="mb-4 p-3 bg-yellow-50 text-yellow-800 rounded">
+      Du bist noch nicht eingeloggt. <a class="underline text-blue-700" href="/auth/signin">Jetzt anmelden</a>.
+    </div>
+  {% endif %}
+
+  <p class="text-gray-700">Skeleton mit servergerenderten Templates ist aktiv.</p>
 {% endblock %}

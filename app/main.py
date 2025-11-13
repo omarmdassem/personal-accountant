@@ -7,6 +7,8 @@ from starlette.middleware.sessions import (
 )
 
 from app.config import get_settings  # our function to read settings from .env
+from app.observability import RequestLogMiddleware
+from app.routers.auth import router as auth_router
 from app.routers.system import router as system_router
 
 settings = get_settings()  # read and cache config (secret key, db url, etc.)
@@ -34,3 +36,7 @@ app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="stat
 # include_router = "plug this group of endpoints into the app"
 # If you change prefix="/api", all routes inside get that prefix (e.g., /api/healthz)
 app.include_router(system_router)  # no prefix for now
+app.include_router(auth_router, prefix="/auth")
+
+
+app.add_middleware(RequestLogMiddleware)

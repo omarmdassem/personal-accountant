@@ -11,12 +11,21 @@
   <header class="bg-white border-b"> <!-- top bar -->
     <div class="max-w-5xl mx-auto p-4 flex items-center justify-between">
       <a href="/" class="font-semibold">Personal Accountant</a> <!-- app title -->
-      <nav class="text-sm space-x-4"> <!-- simple navigation -->
-        <a href="/" class="text-blue-700">Dashboard</a>
-        <a href="#" class="text-blue-700">Transactions</a>
-        <a href="#" class="text-blue-700">Budgets</a>
-        <a href="#" class="text-blue-700">Import CSV</a>
-        <a href="#" class="text-blue-700">FX Rates</a>
+      <nav class="text-sm space-x-4">
+          {% if request.session.get('user_id') %}
+          <!-- Wenn eingeloggt: zeige App-Navigation -->
+          <a href="/" class="text-blue-700">Dashboard</a>
+          <a href="#" class="text-blue-700">Transactions</a>
+          <a href="#" class="text-blue-700">Budgets</a>
+          <a href="#" class="text-blue-700">Import CSV</a>
+          <a href="#" class="text-blue-700">FX Rates</a>
+          <!-- Logout-Link -->
+          <a href="/auth/signout" class="text-gray-600">Sign out</a>
+          {% else %}
+          <!-- Wenn abgemeldet: nur Signin/Signup -->
+          <a href="/auth/signin" class="text-blue-700">Anmelden</a>
+          <a href="/auth/signup" class="text-blue-700">Registrieren</a>
+          {% endif %}
       </nav>
     </div>
   </header>

@@ -26,6 +26,10 @@ class Settings(BaseModel):  # our typed container for config values
     # change effect: changes the base currency label and conversions
     base_currency: str = os.getenv("BASE_CURRENCY", "EUR")
 
+    echo_sql: bool = (
+        os.getenv("ECHO_SQL", "false").lower() == "true"
+    )  # <-- NEW: toggle SQL echo
+
 
 @lru_cache  # make sure Settings() is created once and reused (fast + consistent)
 def get_settings() -> Settings:
