@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block content %}
+  <h1 class="text-2xl font-bold mb-4">Konto löschen</h1>
+
+  {% if error %}
+    <div class="mb-4 p-3 bg-red-100 text-red-700 rounded">{{ error }}</div>
+  {% endif %}
+
+  <p class="mb-4 text-gray-700">
+    Bitte bestätige dein Passwort. Dieser Schritt kann <strong>nicht</strong> rückgängig gemacht werden.
+  </p>
+
+  <form method="post" class="space-y-4">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+    <div>
+      <label class="block text-sm font-medium">Passwort</label>
+      <input name="password" type="password" required class="mt-1 w-full border rounded p-2" />
+    </div>
+    <button class="px-4 py-2 bg-red-600 text-white rounded">Endgültig löschen</button>
+  </form>
+{% endblock %}

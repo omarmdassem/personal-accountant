@@ -19,6 +19,7 @@ ROOT = Path(__file__).resolve().parents[1]  # .../your-project
 if str(ROOT) not in sys.path:
     sys.path.append(str(ROOT))
 
+
 # Jetzt können wir App-Module importieren (nach sys.path-Anpassung):
 from app.config import get_settings
 
