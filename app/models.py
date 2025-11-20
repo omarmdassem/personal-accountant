@@ -1,5 +1,6 @@
 # app/models.py
 from datetime import datetime  # für Zeitstempel wie "created_at"
+from datetime import date
 from enum import Enum  # small enums for clarity
 from typing import Optional  # nullable fields
 
@@ -76,3 +77,32 @@ class FXRate(SQLModel, table=True):
     code: str = Field(index=True)  # e.g., USD
     rate_to_base: float  # 1 unit code → EUR
     valid_ym: int = Field(index=True)  # month (YYYYMM)
+
+
+class Transaction(SQLModel, table=True):
+    """
+    A single real-life entry of money moving in/out.
+    We keep both: an exact date AND a YYYYMM integer for fast monthly rollups.
+    """
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+
+    # Link to the user's active budget (you already have 'one budget per user')
+    budget_id: int = Field(foreign_key="budget.id", index=True)
+
+    # Same shape as budget lines, so reporting is consistent
+    type: "LineType"  # income | expense
+    category: str
+    subcategory: Optional[str] = None
+
+    amount: float
+    currency: str = "EUR"
+
+    # Actual transaction date
+    txn_date: date
+
+    # Denormalized month for joins with budgets / charts: e.g., 202501 for Jan 2025
+    ym: int = Field(index=True)
+
+    # Optional notes
+    notes: Optional[str] = None
