@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Import Budget Lines{% endblock %}
+
+{% block content %}
+  <h1>Import Budget Lines</h1>
+  <p class="muted">Download the CSV template, fill it, then upload it here.</p>
+
+  <p>
+    <a href="/budget/lines/template.csv">Download CSV template</a>
+  </p>
+
+  {% if errors %}
+    <div class="card" style="border-color:#f5c2bf;background:#2a1b1b;">
+      <h3 style="margin-top:0;">Import Errors</h3>
+      <ul>
+        {% for e in errors %}
+          <li>{{ e }}</li>
+        {% endfor %}
+      </ul>
+    </div>
+  {% endif %}
+
+  <form action="/budget/lines/import" method="post" enctype="multipart/form-data" class="card" style="margin-top:12px;">
+    <label for="file">CSV file</label><br/>
+    <input type="file" id="file" name="file" accept=".csv" required style="margin:8px 0;" />
+    <div class="spacer"></div>
+    <button type="submit">Upload & Import</button>
+  </form>
+
+  <div class="spacer"></div>
+  <p><a href="/budget/lines">← Back to Budget Lines</a></p>
+{% endblock %}

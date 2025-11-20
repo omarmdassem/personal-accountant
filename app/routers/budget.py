@@ -4,8 +4,11 @@
 # - Validates month-only fields via period helpers (MM/YY ↔ YYYYMM).
 # - Uses flash messages to confirm actions after redirects.
 
-from fastapi import APIRouter, Depends, Form, HTTPException, Request
-from fastapi.responses import RedirectResponse
+import csv
+import io
+
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
+from fastapi.responses import RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 from sqlmodel import Session, select
 
@@ -293,4 +296,169 @@ def delete_line(
     session.delete(line)
     session.commit()
     add_flash(request, "Budget line deleted.", "success")
+    return RedirectResponse("/budget/lines", status_code=303)
+
+
+@router.get("/lines/template.csv")
+def lines_template_csv():
+    """
+    Serve a minimal CSV template users can fill.
+    Columns: type,category,subcategory,amount,currency,frequency,start_mm_yy,end_mm_yy,one_time_mm_yy
+    """
+    out = io.StringIO()
+    w = csv.writer(out)
+    w.writerow(
+        [
+            "type",
+            "category",
+            "subcategory",
+            "amount",
+            "currency",
+            "frequency",
+            "start_mm_yy",
+            "end_mm_yy",
+            "one_time_mm_yy",
+        ]
+    )
+    # Example rows (one monthly, one one-time)
+    w.writerow(["income", "Salary", "", "1000", "EUR", "monthly", "01/25", "12/25", ""])
+    w.writerow(["income", "Bonus", "", "500", "EUR", "one_time", "", "", "06/25"])
+    data = out.getvalue()
+    return Response(
+        content=data,
+        media_type="text/csv",
+        headers={
+            "Content-Disposition": 'attachment; filename="budget_lines_template.csv"'
+        },
+    )
+
+
+@router.get("/lines/import")
+def lines_import_form(request: Request):
+    try:
+        _require_user_id(request)
+    except HTTPException as e:
+        return RedirectResponse(e.headers["Location"], status_code=e.status_code)
+
+    return templates.TemplateResponse(
+        "budget/lines_import.html",
+        {"request": request, "errors": None},
+    )
+
+
+@router.post("/lines/import")
+async def lines_import_submit(
+    request: Request,
+    session: Session = Depends(get_session),
+    file: UploadFile = File(...),
+):
+    try:
+        user_id = _require_user_id(request)
+    except HTTPException as e:
+        return RedirectResponse(e.headers["Location"], status_code=e.status_code)
+
+    # Read file as UTF-8 text
+    raw = await file.read()
+    text = raw.decode("utf-8", errors="replace")
+    reader = csv.DictReader(io.StringIO(text))
+
+    required_cols = [
+        "type",
+        "category",
+        "subcategory",
+        "amount",
+        "currency",
+        "frequency",
+        "start_mm_yy",
+        "end_mm_yy",
+        "one_time_mm_yy",
+    ]
+    if reader.fieldnames is None or any(
+        c not in reader.fieldnames for c in required_cols
+    ):
+        return templates.TemplateResponse(
+            "budget/lines_import.html",
+            {
+                "request": request,
+                "errors": [
+                    "Header mismatch. Please download the template and use those exact column names."
+                ],
+            },
+            status_code=400,
+        )
+
+    budget = _get_or_create_budget(session, user_id)
+
+    created = 0
+    errors: list[str] = []
+    for idx, row in enumerate(reader, start=2):  # start=2 because header is line 1
+        try:
+            t = (row["type"] or "").strip().lower()  # "income" | "expense"
+            cat = (row["category"] or "").strip()
+            sub = (row["subcategory"] or "").strip() or None
+            amt = float(row["amount"]) if row["amount"] else None
+            cur = (row["currency"] or "EUR").strip()
+            freq = (row["frequency"] or "").strip().lower()  # "monthly" | "one_time"
+            start_mm_yy = (row["start_mm_yy"] or "").strip()
+            end_mm_yy = (row["end_mm_yy"] or "").strip()
+            one_time_mm_yy = (row["one_time_mm_yy"] or "").strip()
+
+            if not t or not cat or amt is None or not freq:
+                raise ValueError("Missing one of: type, category, amount, frequency.")
+
+            # Convert month fields
+            start_ym = (
+                parse_mm_yy(start_mm_yy)
+                if (freq == "monthly" and start_mm_yy)
+                else None
+            )
+            end_ym = (
+                parse_mm_yy(end_mm_yy) if (freq == "monthly" and end_mm_yy) else None
+            )
+            one_time_ym = (
+                parse_mm_yy(one_time_mm_yy)
+                if (freq == "one_time" and one_time_mm_yy)
+                else None
+            )
+
+            # Validate the combo logic
+            validate_line_frequency_fields(
+                frequency=freq,
+                start_ym=start_ym,
+                end_ym=end_ym,
+                one_time_ym=one_time_ym,
+            )
+
+            # Create row
+            line = BudgetLine(
+                budget_id=budget.id,
+                type=LineType(t),
+                category=cat,
+                subcategory=sub,
+                amount=amt,
+                currency=cur or "EUR",
+                frequency=Frequency(freq),
+                start_ym=start_ym,
+                end_ym=end_ym,
+                one_time_ym=one_time_ym,
+                is_active=True,
+            )
+            session.add(line)
+            created += 1
+        except Exception as ex:
+            errors.append(f"Row {idx}: {ex}")
+
+    # Commit what we could save (simple MVP: partial success allowed)
+    session.commit()
+
+    if created:
+        add_flash(request, f"Imported {created} line(s).", "success")
+    if errors:
+        # Show errors on the same page (400 so user sees issues)
+        return templates.TemplateResponse(
+            "budget/lines_import.html",
+            {"request": request, "errors": errors},
+            status_code=400,
+        )
+
     return RedirectResponse("/budget/lines", status_code=303)
