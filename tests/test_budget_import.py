@@ -4,7 +4,7 @@ import io
 from fastapi.testclient import TestClient
 
 
-def signup(client):
+def signup(client: TestClient) -> None:
     client.post(
         "/auth/signup",
         data={"email": "t@test.com", "password": "pw"},
@@ -12,7 +12,7 @@ def signup(client):
     )
 
 
-def _post_csv(client, rows):
+def _post_csv(client: TestClient, rows):
     buf = io.StringIO()
     w = csv.writer(buf)
     w.writerow(
