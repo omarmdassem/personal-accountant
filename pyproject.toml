@@ -1,9 +1,38 @@
+# pyproject.toml — unified config for Black, isort, Ruff, Pytest
+
 [tool.black]
 line-length = 88
+target-version = ["py313"]
+# Keep Alembic migrations stable (avoid noisy diffs)
+extend-exclude = '''
+(
+  ^alembic/env\.py
+| ^alembic/versions/
+)
+'''
 
 [tool.isort]
 profile = "black"
-line_length = 88
+# Don't reorder imports in Alembic files
+skip_glob = ["alembic/env.py", "alembic/versions/*.py"]
 
 [tool.ruff]
 line-length = 88
+target-version = "py313"
+
+[tool.ruff.lint]
+# Keep it minimal: Black handles formatting; Ruff handles errors
+select = ["E", "F"]
+# Let Black control line length instead of Ruff E501
+ignore = ["E501"]
+
+[tool.ruff.lint.per-file-ignores]
+"alembic/env.py" = ["E402"]
+"alembic/versions/*.py" = ["E402", "F401", "F811"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
