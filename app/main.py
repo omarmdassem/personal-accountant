@@ -7,7 +7,9 @@ from starlette.middleware.sessions import (
 )
 
 from app.config import get_settings  # our function to read settings from .env
+from app.flash import FlashMiddleware
 from app.observability import RequestLogMiddleware
+from app.routers import budget
 from app.routers.auth import router as auth_router
 from app.routers.system import router as system_router
 
@@ -37,6 +39,18 @@ app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="stat
 # If you change prefix="/api", all routes inside get that prefix (e.g., /api/healthz)
 app.include_router(system_router)  # no prefix for now
 app.include_router(auth_router, prefix="/auth")
+app.include_router(budget.router)
 
 
+# ⬇️ Add this FIRST (so request.session is available to others)
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=settings.secret_key,
+    max_age=1800,  # 30 minutes
+    same_site="lax",  # good default for forms
+    # https_only=False  # keep False on localhost; True when you serve HTTPS
+)
+
+# Then your other middlewares
+app.add_middleware(FlashMiddleware)
 app.add_middleware(RequestLogMiddleware)

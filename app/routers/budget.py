@@ -1,46 +1,35 @@
 # app/routers/budget.py
-# Purpose: List and create planned budget lines for the current user.
-# Minimal, page-based flow (no HTMX yet). Redirects to signin if user not logged in.
+# Purpose: Budget Lines CRUD (list/create/edit/delete) for the signed-in user.
+# - Auto-creates a Budget for the user on first use.
+# - Validates month-only fields via period helpers (MM/YY ↔ YYYYMM).
+# - Uses flash messages to confirm actions after redirects.
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlmodel import Session, select
 
-from app.db import get_session  # DB session per request
+from app.db import get_session
+from app.flash import add_flash
 from app.models import Budget, BudgetLine, Frequency, LineType
 from app.period_ym import format_ym, parse_mm_yy, validate_line_frequency_fields
 
 router = APIRouter(prefix="/budget", tags=["budget"])
-templates = Jinja2Templates(
-    directory="app/templates"
-)  # looks for templates in this folder
+templates = Jinja2Templates(directory="app/templates")
 
 
 def _require_user_id(request: Request) -> int:
     """
-    Read the logged-in user_id from the session.
-    If missing, raise a redirect (303) to the signin page.
+    Read logged-in user_id from the session.
+    If missing (or SessionMiddleware not set), redirect to signin.
     """
-    user_id = request.session.get("user_id")
+    try:
+        user_id = request.session.get("user_id")
+    except AssertionError:
+        raise HTTPException(status_code=303, headers={"Location": "/auth/signin"})
     if not user_id:
-        # 303 redirect to signin keeps method safe for GET/POST
         raise HTTPException(status_code=303, headers={"Location": "/auth/signin"})
     return int(user_id)
-
-
-def _get_line_for_user(
-    session: Session, user_id: int, line_id: int
-) -> BudgetLine | None:
-    """
-    Return the line only if it belongs to the current user's budget.
-    """
-    stmt = (
-        select(BudgetLine)
-        .join(Budget, BudgetLine.budget_id == Budget.id)
-        .where(BudgetLine.id == line_id, Budget.user_id == user_id)
-    )
-    return session.exec(stmt).first()
 
 
 def _get_or_create_budget(session: Session, user_id: int) -> Budget:
@@ -59,15 +48,27 @@ def _get_or_create_budget(session: Session, user_id: int) -> Budget:
     return bud
 
 
+def _get_line_for_user(
+    session: Session, user_id: int, line_id: int
+) -> BudgetLine | None:
+    """
+    Return the line only if it belongs to the current user's budget.
+    Prevents editing/deleting others' data.
+    """
+    stmt = (
+        select(BudgetLine)
+        .join(Budget, BudgetLine.budget_id == Budget.id)
+        .where(BudgetLine.id == line_id, Budget.user_id == user_id)
+    )
+    return session.exec(stmt).first()
+
+
 @router.get("/lines")
 def list_lines(request: Request, session: Session = Depends(get_session)):
-    """
-    Render a table of budget lines for the current user.
-    """
+    """Render a table of budget lines for the current user."""
     try:
         user_id = _require_user_id(request)
     except HTTPException as e:
-        # Turn dependency-style redirect into a real response
         return RedirectResponse(e.headers["Location"], status_code=e.status_code)
 
     budget = _get_or_create_budget(session, user_id)
@@ -85,9 +86,7 @@ def list_lines(request: Request, session: Session = Depends(get_session)):
 
 @router.get("/lines/new")
 def new_line_form(request: Request):
-    """
-    Show empty form to create a new budget line.
-    """
+    """Show empty form to create a new budget line."""
     try:
         _require_user_id(request)
     except HTTPException as e:
@@ -95,7 +94,7 @@ def new_line_form(request: Request):
 
     return templates.TemplateResponse(
         "budget/line_form.html",
-        {"request": request, "errors": None},
+        {"request": request, "errors": None, "line": None},
     )
 
 
@@ -106,7 +105,7 @@ def create_line(
     # ----- form fields -----
     type: str = Form(...),  # "income" | "expense"
     category: str = Form(...),
-    subcategory: str = Form(None),
+    subcategory: str | None = Form(None),
     amount: float = Form(...),
     currency: str = Form("EUR"),
     frequency: str = Form(...),  # "monthly" | "one_time"
@@ -114,9 +113,7 @@ def create_line(
     end_mm_yy: str | None = Form(None),
     one_time_mm_yy: str | None = Form(None),
 ):
-    """
-    Handle form submit, validate MM/YY logic, save, and redirect to list.
-    """
+    """Handle create submit, validate, save, and redirect to list."""
     try:
         user_id = _require_user_id(request)
     except HTTPException as e:
@@ -124,7 +121,7 @@ def create_line(
 
     budget = _get_or_create_budget(session, user_id)
 
-    # Parse months according to frequency; reject invalid combos
+    # Parse months according to frequency; reject invalid combos.
     try:
         start_ym = (
             parse_mm_yy(start_mm_yy)
@@ -147,18 +144,12 @@ def create_line(
             one_time_ym=one_time_ym,
         )
     except Exception as ex:
-        # Re-render form with a simple error list
         return templates.TemplateResponse(
             "budget/line_form.html",
-            {
-                "request": request,
-                "errors": [str(ex)],
-                # (optional) could echo back fields, keeping MVP simple for now
-            },
+            {"request": request, "errors": [str(ex)], "line": None},
             status_code=400,
         )
 
-    # Map strings to enums; FastAPI would also coerce via Pydantic model, but we keep it minimal here
     line = BudgetLine(
         budget_id=budget.id,
         type=LineType(type),
@@ -172,10 +163,9 @@ def create_line(
         one_time_ym=one_time_ym,
         is_active=True,
     )
-
     session.add(line)
     session.commit()
-    # PRG pattern: redirect after POST
+    add_flash(request, "Budget line created.", "success")
     return RedirectResponse(url="/budget/lines", status_code=303)
 
 
@@ -183,6 +173,7 @@ def create_line(
 def edit_line_form(
     line_id: int, request: Request, session: Session = Depends(get_session)
 ):
+    """Show prefilled edit form for an existing budget line."""
     try:
         user_id = _require_user_id(request)
     except HTTPException as e:
@@ -192,7 +183,6 @@ def edit_line_form(
     if not line:
         raise HTTPException(status_code=404, detail="Line not found")
 
-    # Pre-format months to MM/YY for the form
     start_mm_yy = format_ym(line.start_ym) if line.start_ym else ""
     end_mm_yy = format_ym(line.end_ym) if line.end_ym else ""
     one_time_mm_yy = format_ym(line.one_time_ym) if line.one_time_ym else ""
@@ -225,6 +215,7 @@ def edit_line_submit(
     end_mm_yy: str | None = Form(None),
     one_time_mm_yy: str | None = Form(None),
 ):
+    """Handle edit submit, validate, save, and redirect to list."""
     try:
         user_id = _require_user_id(request)
     except HTTPException as e:
@@ -248,6 +239,7 @@ def edit_line_submit(
             if (frequency == "one_time" and one_time_mm_yy)
             else None
         )
+
         validate_line_frequency_fields(
             frequency=frequency,
             start_ym=start_ym,
@@ -268,7 +260,6 @@ def edit_line_submit(
             status_code=400,
         )
 
-    # Apply changes
     line.type = LineType(type)
     line.category = category.strip()
     line.subcategory = subcategory.strip() if subcategory else None
@@ -281,6 +272,7 @@ def edit_line_submit(
 
     session.add(line)
     session.commit()
+    add_flash(request, "Budget line updated.", "success")
     return RedirectResponse("/budget/lines", status_code=303)
 
 
@@ -288,6 +280,7 @@ def edit_line_submit(
 def delete_line(
     line_id: int, request: Request, session: Session = Depends(get_session)
 ):
+    """Delete a budget line that belongs to the current user."""
     try:
         user_id = _require_user_id(request)
     except HTTPException as e:
@@ -299,4 +292,5 @@ def delete_line(
 
     session.delete(line)
     session.commit()
+    add_flash(request, "Budget line deleted.", "success")
     return RedirectResponse("/budget/lines", status_code=303)

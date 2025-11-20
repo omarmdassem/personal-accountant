@@ -1,0 +1,52 @@
+{# app/templates/budget/lines_list.html #}
+{% extends "base.html" %}
+{% block title %}Budget Lines{% endblock %}
+
+{% block content %}
+<h1 class="mb-4">Budget Lines</h1>
+
+<p><a href="/budget/lines/new">+ Add line</a></p>
+
+{% if lines and lines|length > 0 %}
+<table border="1" cellpadding="6" cellspacing="0">
+  <thead>
+    <tr>
+      <th>Type</th>
+      <th>Category</th>
+      <th>Subcategory</th>
+      <th>Amount</th>
+      <th>Currency</th>
+      <th>Frequency</th>
+      <th>Start YM</th>
+      <th>End YM</th>
+      <th>One-time YM</th>
+      <th>Actions</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for l in lines %}
+    <tr>
+      <td>{{ l.type.value if l.type else '' }}</td>
+      <td>{{ l.category }}</td>
+      <td>{{ l.subcategory or "" }}</td>
+      <td>{{ "%.2f"|format(l.amount) }}</td>
+      <td>{{ l.currency }}</td>
+      <td>{{ l.frequency.value if l.frequency else '' }}</td>
+      <td>{{ l.start_ym or "" }}</td>
+      <td>{{ l.end_ym or "" }}</td>
+      <td>{{ l.one_time_ym or "" }}</td>
+      <td>
+        <a href="/budget/lines/{{ l.id }}/edit">Edit</a>
+        <form method="post" action="/budget/lines/{{ l.id }}/delete" style="display:inline" onsubmit="return confirm('Delete this line?');">
+          <button type="submit">Delete</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p>No lines yet.</p>
+{% endif %}
+
+{% endblock %}

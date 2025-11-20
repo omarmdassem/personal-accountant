@@ -1,0 +1,81 @@
+{# app/templates/budget/line_form.html #}
+{% extends "base.html" %}
+{% block title %}{{ 'Edit' if line else 'New' }} Budget Line{% endblock %}
+
+{% block content %}
+<h1 class="mb-4">{{ 'Edit' if line else 'New' }} Budget Line</h1>
+
+{% if errors %}
+  <div style="color:#b00020; margin-bottom:12px;">
+    {% for e in errors %}<div>• {{ e }}</div>{% endfor %}
+  </div>
+{% endif %}
+
+{# derive safe strings even if enums are used #}
+{% set t = (line.type.value if line and (line.type is not none) and not (line.type is string) else (line.type if line else '')) %}
+{% set freq = (line.frequency.value if line and (line.frequency is not none) and not (line.frequency is string) else (line.frequency if line else '')) %}
+
+{% set action = ( '/budget/lines/' ~ line.id ~ '/edit' ) if line else '/budget/lines/new' %}
+<form method="post" action="{{ action }}">
+  <div>
+    <label>Type</label>
+    <select name="type" required>
+      <option value="income" {{ 'selected' if t == 'income' else '' }}>income</option>
+      <option value="expense" {{ 'selected' if t == 'expense' else '' }}>expense</option>
+    </select>
+  </div>
+
+  <div>
+    <label>Category</label>
+    <input name="category" value="{{ line.category if line else '' }}" required>
+  </div>
+
+  <div>
+    <label>Subcategory (optional)</label>
+    <input name="subcategory" value="{{ (line.subcategory if line and line.subcategory else '') }}">
+  </div>
+
+  <div>
+    <label>Amount</label>
+    <input name="amount" type="number" step="0.01" value="{{ line.amount if line else '' }}" required>
+  </div>
+
+  <div>
+    <label>Currency</label>
+    <input name="currency" value="{{ line.currency if line else 'EUR' }}">
+  </div>
+
+  <fieldset style="margin-top:12px;">
+    <legend>Frequency</legend>
+
+    <div>
+      <label>
+        <input type="radio" name="frequency" value="monthly" {{ 'checked' if freq == 'monthly' else '' }} required>
+        monthly
+      </label>
+      <div style="margin-left:16px;">
+        <label>Start (MM/YY)</label>
+        <input name="start_mm_yy" placeholder="01/25" value="{{ start_mm_yy|default('', true) }}">
+        <label>End (MM/YY, optional)</label>
+        <input name="end_mm_yy" placeholder="12/25" value="{{ end_mm_yy|default('', true) }}">
+      </div>
+    </div>
+
+    <div style="margin-top:8px;">
+      <label>
+        <input type="radio" name="frequency" value="one_time" {{ 'checked' if freq == 'one_time' else '' }} required>
+        one_time
+      </label>
+      <div style="margin-left:16px;">
+        <label>Date (MM/YY)</label>
+        <input name="one_time_mm_yy" placeholder="06/25" value="{{ one_time_mm_yy|default('', true) }}">
+      </div>
+    </div>
+  </fieldset>
+
+  <div style="margin-top:12px;">
+    <button type="submit">Save</button>
+    <a href="/budget/lines">Cancel</a>
+  </div>
+</form>
+{% endblock %}

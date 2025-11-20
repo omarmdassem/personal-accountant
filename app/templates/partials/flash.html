@@ -1,0 +1,19 @@
+{# app/templates/partials/flash.html #}
+{# Robustly read flashes from request.state; fall back to [] if missing #}
+{% set flashes = request.state.flashes | default([], true) if request is defined else [] %}
+
+{% if flashes %}
+  <div style="margin:12px 0;">
+    {% for f in flashes %}
+      {% set style_map = {
+        'success': 'background:#e6f4ea;border:1px solid #b7dfc4;',
+        'info':    'background:#eef6ff;border:1px solid #cfe3ff;',
+        'warning': 'background:#fff7e6;border:1px solid #ffe0a3;',
+        'error':   'background:#fdecea;border:1px solid #f5c2bf;'
+      } %}
+      <div style="padding:8px 12px;margin-bottom:6px;border-radius:6px; {{ style_map.get(f.kind, style_map['info']) }}">
+        {{ f.message }}
+      </div>
+    {% endfor %}
+  </div>
+{% endif %}
