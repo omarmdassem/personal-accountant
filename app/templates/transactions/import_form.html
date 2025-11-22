@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block content %}
+<h1 class="mb-3">Import Transactions</h1>
+
+<p class="mb-3">
+  <a class="btn btn-outline-secondary" href="/transactions/template">Download CSV template</a>
+</p>
+
+{% if errors %}
+<div class="alert alert-danger">
+  <p><strong>There were problems with your file:</strong></p>
+  <ul>
+  {% for e in errors %}
+    <li>{{ e }}</li>
+  {% endfor %}
+  </ul>
+</div>
+{% endif %}
+
+<form method="post" enctype="multipart/form-data">
+  <div class="mb-3">
+    <label class="form-label">CSV File</label>
+    <input class="form-control" type="file" name="file" accept=".csv,text/csv" required>
+    <div class="form-text">Columns (exactly): date, type, category, subcategory, amount, currency, notes</div>
+    <div class="form-text">Date format must be YYYY-MM-DD.</div>
+  </div>
+  <button class="btn btn-primary" type="submit">Upload</button>
+  <a class="btn btn-secondary" href="/transactions">Back</a>
+</form>
+{% endblock %}

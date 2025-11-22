@@ -16,14 +16,18 @@ from app.routers.transactions import router as transactions_router
 from app.routers.transactions_import import router as tx_import_router
 
 settings = get_settings()
-app = FastAPI(title="Personal Accountant", version="0.1.0")
-templates = Jinja2Templates(directory="app/templates")
 
-# Session first
+app = FastAPI(title="Personal Accountant", version="0.1.0")
+
+# Templates available via app.state.templates so routers don't import from main
+templates = Jinja2Templates(directory="app/templates")
+app.state.templates = templates
+
+# Middleware order: session first, then logging, then flash
 app.add_middleware(
     SessionMiddleware,
     secret_key=settings.secret_key,
-    max_age=1800,
+    max_age=1800,  # 30 minutes
     same_site="lax",
 )
 app.add_middleware(RequestLogMiddleware)
@@ -40,4 +44,6 @@ app.include_router(tx_import_router)
 # Home
 @app.get("/", response_class=HTMLResponse)
 def index(request: Request):
-    return templates.TemplateResponse("index.html", {"request": request})
+    return app.state.templates.TemplateResponse(
+        "index.html", {"request": request, "title": "Home"}
+    )

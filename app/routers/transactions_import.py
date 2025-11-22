@@ -6,31 +6,34 @@ import io
 from datetime import date
 from typing import List
 
-from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
-from fastapi.responses import PlainTextResponse, RedirectResponse
-from fastapi.templating import Jinja2Templates
+from fastapi import APIRouter, Depends, File, Request, UploadFile
+from fastapi.responses import (
+    HTMLResponse,
+    PlainTextResponse,
+    RedirectResponse,
+    Response,
+)
 from sqlmodel import Session, select
 
+from app.config import get_settings
 from app.db import get_session
 from app.flash import add_flash
-from app.models import Budget, LineType
-from app.services.transactions import create_transaction
+from app.models import Budget, Transaction
+from app.period_ym import ym_from_date
+from app.security import require_user_id
 
-templates = Jinja2Templates(directory="app/templates")
-router = APIRouter(prefix="/transactions/import", tags=["transactions-import"])
+router = APIRouter(prefix="/transactions", tags=["transactions"])
+settings = get_settings()
 
-
-# ---- local helpers (avoid cross-imports) -----------------------------------
-
-
-def _require_user_id(request: Request) -> int:
-    user_id = request.session.get("user_id")
-    if not user_id:
-        raise HTTPException(
-            status_code=303,
-            headers={"Location": "/auth/signin"},
-        )
-    return int(user_id)
+TEMPLATE_COLUMNS = [
+    "date",  # YYYY-MM-DD
+    "type",  # income|expense
+    "category",
+    "subcategory",
+    "amount",
+    "currency",
+    "notes",
+]
 
 
 def _get_or_create_budget(session: Session, user_id: int) -> Budget:
@@ -38,181 +41,133 @@ def _get_or_create_budget(session: Session, user_id: int) -> Budget:
     bud = session.exec(stmt).first()
     if bud:
         return bud
-    bud = Budget(user_id=user_id, base_currency="EUR", is_active=True)
+    bud = Budget(user_id=user_id, base_currency=settings.base_currency, is_active=True)
     session.add(bud)
     session.commit()
     session.refresh(bud)
     return bud
 
 
-EXPECTED_HEADER = [
-    "date",  # YYYY-MM-DD
-    "type",  # income|expense
-    "category",
-    "subcategory",
-    "amount",  # number
-    "currency",  # e.g. EUR
-    "notes",
-]
-
-
-@router.get("")
-def import_form(request: Request):
-    # If not signed in, redirect
+def _parse_date_iso(s: str) -> date:
+    # Expect ISO yyyy-mm-dd from the template
     try:
-        _require_user_id(request)
-    except HTTPException as e:
-        return RedirectResponse(e.headers["Location"], status_code=e.status_code)
-
-    return templates.TemplateResponse(
-        "transactions/import.html",
-        {
-            "request": request,
-            "errors": None,
-        },
-    )
+        y, m, d = (int(p) for p in s.strip().split("-"))
+        return date(y, m, d)
+    except Exception as exc:  # noqa: BLE001
+        raise ValueError("Invalid date format, expected YYYY-MM-DD") from exc
 
 
 @router.get("/template", response_class=PlainTextResponse)
-def download_template():
+def download_csv_template() -> Response:
     buf = io.StringIO()
     w = csv.writer(buf)
-    w.writerow(EXPECTED_HEADER)
-    # one example row each
-    w.writerow(["2025-01-01", "income", "Salary", "", "1000", "EUR", "January salary"])
-    w.writerow(
-        ["2025-01-15", "expense", "Groceries", "", "45.30", "EUR", "Weekly shop"]
-    )
-    return buf.getvalue()
+    w.writerow(TEMPLATE_COLUMNS)
+    # example row (users can delete it)
+    w.writerow(["2025-01-15", "income", "Salary", "", "1000", "EUR", "January salary"])
+    data = buf.getvalue()
+    headers = {
+        "Content-Disposition": 'attachment; filename="transactions_template.csv"',
+        "Content-Type": "text/csv; charset=utf-8",
+    }
+    return Response(content=data, headers=headers, media_type="text/csv")
 
 
-@router.post("")
-async def import_submit(
+@router.get("/import", response_class=HTMLResponse)
+def transactions_import_form(
     request: Request,
     session: Session = Depends(get_session),
+) -> HTMLResponse:
+    # auth check so the page is protected
+    require_user_id(request)
+    return request.app.state.templates.TemplateResponse(
+        "transactions/import_form.html",
+        {"request": request, "title": "Import Transactions"},
+    )
+
+
+@router.post("/import")
+def transactions_import_upload(
+    request: Request,
     file: UploadFile = File(...),
+    session: Session = Depends(get_session),
 ):
-    # Redirect if not signed in
-    try:
-        user_id = _require_user_id(request)
-    except HTTPException as e:
-        return RedirectResponse(e.headers["Location"], status_code=e.status_code)
+    user_id = require_user_id(request)
+    bud = _get_or_create_budget(session, user_id)
 
-    # Read whole file as text
-    raw = await file.read()
+    # Read CSV as text (support utf-8-sig to drop BOM)
+    raw = file.file.read()
     try:
-        text = raw.decode("utf-8")
+        text = raw.decode("utf-8-sig")
     except Exception:
-        return templates.TemplateResponse(
-            "transactions/import.html",
+        text = raw.decode()  # fallback
+
+    reader = csv.DictReader(io.StringIO(text))
+    got = [c.strip() for c in (reader.fieldnames or [])]
+    expected = TEMPLATE_COLUMNS
+
+    if got != expected:
+        return request.app.state.templates.TemplateResponse(
+            "transactions/import_form.html",
             {
                 "request": request,
-                "errors": ["File must be UTF-8 text (CSV)."],
-            },
-            status_code=400,
-        )
-
-    # Parse CSV
-    buf = io.StringIO(text)
-    reader = csv.reader(buf)
-
-    try:
-        header = next(reader)
-    except StopIteration:
-        return templates.TemplateResponse(
-            "transactions/import.html",
-            {
-                "request": request,
-                "errors": ["CSV appears to be empty."],
-            },
-            status_code=400,
-        )
-
-    if header != EXPECTED_HEADER:
-        return templates.TemplateResponse(
-            "transactions/import.html",
-            {
-                "request": request,
+                "title": "Import Transactions",
                 "errors": [
-                    "Header mismatch. Download the template and use those exact "
-                    "column names and order."
+                    "Header mismatch. Please download the template and use those exact column names.",
+                    f"Expected: {', '.join(expected)}",
+                    f"Got: {', '.join(got) if got else '(none)'}",
                 ],
             },
             status_code=400,
         )
 
-    # Validate + import rows
-    budget = _get_or_create_budget(session, user_id)
-
     errors: List[str] = []
-    imported = 0
-    row_idx = 1  # data rows start at 1 (after header)
-    for row in reader:
-        row_idx += 1
-        # Allow shorter rows (empty trailing columns)
-        row = (row + [""] * len(EXPECTED_HEADER))[: len(EXPECTED_HEADER)]
-        (
-            s_date,
-            s_type,
-            s_cat,
-            s_sub,
-            s_amount,
-            s_currency,
-            s_notes,
-        ) = [c.strip() for c in row]
+    to_add: List[Transaction] = []
 
-        # Validate each field with clear messages
+    for idx, row in enumerate(reader, start=2):  # start=2 because row 1 is header
         try:
-            if not s_date:
-                raise ValueError("date is required (YYYY-MM-DD)")
-            try:
-                txn_dt = date.fromisoformat(s_date)
-            except Exception:
-                raise ValueError("date must be in YYYY-MM-DD format")
+            d = row["date"].strip()
+            t = row["type"].strip().lower()
+            cat = row["category"].strip()
+            sub = (row["subcategory"] or "").strip() or None
+            amount_str = row["amount"].strip()
+            cur = row["currency"].strip().upper()
+            notes = (row["notes"] or "").strip() or None
 
-            s_type_l = s_type.lower()
-            if s_type_l not in ("income", "expense"):
+            if t not in {"income", "expense"}:
                 raise ValueError("type must be 'income' or 'expense'")
 
-            if not s_cat:
-                raise ValueError("category is required")
-
-            if not s_amount:
-                raise ValueError("amount is required")
+            txn_date = _parse_date_iso(d)
             try:
-                amount = float(s_amount)
-            except Exception:
-                raise ValueError("amount must be a number")
+                amount = float(amount_str)
+            except Exception as exc:  # noqa: BLE001
+                raise ValueError("amount must be a number") from exc
 
-            currency = s_currency or "EUR"
-
-            # Create row
-            create_transaction(
-                session,
-                budget_id=budget.id,
-                type=LineType(s_type_l),
-                category=s_cat,
-                subcategory=(s_sub or None),
+            tx = Transaction(
+                budget_id=bud.id,
+                type=t,
+                category=cat,
+                subcategory=sub,
                 amount=amount,
-                currency=currency,
-                txn_date=txn_dt,
-                notes=(s_notes or None),
+                currency=cur,
+                txn_date=txn_date,
+                ym=ym_from_date(txn_date),
+                notes=notes,
             )
-            imported += 1
+            to_add.append(tx)
 
-        except Exception as ex:  # collect row-level errors
-            errors.append(f"Row {row_idx}: {ex}")
+        except Exception as exc:  # noqa: BLE001
+            errors.append(f"Row {idx}: {exc}")
 
     if errors:
-        # Show all errors and do not redirect
-        return templates.TemplateResponse(
-            "transactions/import.html",
-            {
-                "request": request,
-                "errors": errors,
-            },
+        return request.app.state.templates.TemplateResponse(
+            "transactions/import_form.html",
+            {"request": request, "title": "Import Transactions", "errors": errors},
             status_code=400,
         )
 
-    add_flash(request, f"Imported {imported} transactions.", "success")
+    for tx in to_add:
+        session.add(tx)
+    session.commit()
+
+    add_flash(request, "success", f"Imported {len(to_add)} transactions.")
     return RedirectResponse("/transactions", status_code=303)

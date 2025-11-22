@@ -1,33 +1,39 @@
-# app/db.py
-# Purpose: provide a database engine and a short-lived Session for each request.
-from sqlmodel import (  # Session = DB conversation; engine = DB connection factory
-    Session,
-    create_engine,
-)
+from __future__ import annotations
 
-from app.config import get_settings  # read DB URL from .env
+import logging
+from typing import Generator
 
-settings = get_settings()  # load settings once
+from sqlmodel import Session, SQLModel, create_engine
 
-# create the engine (connector to the DB)
-# If you change the URL in .env, the app talks to a different DB file/server.
+from app.config import get_settings
+
+settings = get_settings()
+
+# SQLite needs a special connect arg; others (e.g., Postgres) don't.
+connect_args = {}
+if settings.database_url.startswith("sqlite"):
+    connect_args = {"check_same_thread": False}
+
 engine = create_engine(
     settings.database_url,
-    echo=settings.echo_sql,  # True = logs SQL (useful for debug; slower)
-    connect_args=(
-        {"check_same_thread": False}
-        if settings.database_url.startswith("sqlite")
-        else {}
-    ),
-    # above: SQLite needs this flag for multi-threaded use in dev; other DBs ignore it
+    echo=False,  # set True to see SQL in console
+    connect_args=connect_args,
 )
 
+# Log which DB URL is actually in use (helps avoid “which app.db?” confusion).
+logger = logging.getLogger("db")
+logger.info("DB URL in use: %s", engine.url)
 
-def get_session():
-    """
-    Yield a short-lived Session.
-    - 'yield' means FastAPI can auto-close it after the request.
-    - If you forget to close sessions, you can leak connections.
-    """
+
+def get_session() -> Generator[Session, None, None]:
+    """FastAPI dependency: yields a database session and closes it afterwards."""
     with Session(engine) as session:
         yield session
+
+
+def create_db_and_tables() -> None:
+    """
+    Optional helper for ad-hoc local setups.
+    Prefer Alembic migrations for schema changes.
+    """
+    SQLModel.metadata.create_all(engine)

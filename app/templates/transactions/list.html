@@ -1,51 +1,47 @@
 {% extends "base.html" %}
-{% block title %}Transactions{% endblock %}
-
 {% block content %}
-<div class="container mx-auto max-w-4xl">
-  <div class="flex items-center justify-between mb-4">
-    <h1 class="text-2xl font-semibold">Transactions</h1>
-    <a href="/transactions/new" class="px-3 py-2 rounded bg-blue-600 text-white">New</a>
-  </div>
+<h1 class="mb-3">Transactions</h1>
 
-  {% if txns and txns|length > 0 %}
-  <div class="overflow-x-auto">
-    <table class="min-w-full border border-gray-200">
-      <thead class="bg-gray-50">
-        <tr>
-          <th class="p-2 text-left border-b">Date</th>
-          <th class="p-2 text-left border-b">Type</th>
-          <th class="p-2 text-left border-b">Category</th>
-          <th class="p-2 text-left border-b">Subcategory</th>
-          <th class="p-2 text-right border-b">Amount</th>
-          <th class="p-2 text-left border-b">Currency</th>
-          <th class="p-2 text-left border-b">Notes</th>
-          <th class="p-2 text-right border-b">Actions</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for t in txns %}
-        <tr class="hover:bg-gray-50">
-          <td class="p-2 border-b">{{ t.txn_date }}</td>
-          <td class="p-2 border-b capitalize">{{ t.type }}</td>
-          <td class="p-2 border-b">{{ t.category }}</td>
-          <td class="p-2 border-b">{{ t.subcategory or "" }}</td>
-          <td class="p-2 text-right border-b">{{ "%.2f"|format(t.amount) }}</td>
-          <td class="p-2 border-b">{{ t.currency }}</td>
-          <td class="p-2 border-b">{{ t.notes or "" }}</td>
-          <td class="p-2 text-right border-b">
-            <a class="text-blue-600 mr-3" href="/transactions/{{ t.id }}/edit">Edit</a>
-            <form action="/transactions/{{ t.id }}/delete" method="post" class="inline">
-              <button class="text-red-600" onclick="return confirm('Delete this transaction?')">Delete</button>
-            </form>
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
-  {% else %}
-    <p class="text-gray-600">No transactions yet. Create one to get started.</p>
-  {% endif %}
-</div>
+<p class="mb-3">
+  <a class="btn btn-primary" href="/transactions/new">+ New</a>
+  <a class="btn btn-secondary" href="/transactions/import">Import CSV</a>
+</p>
+
+{% if rows and rows|length %}
+<table class="table table-striped">
+  <thead>
+    <tr>
+      <th>Date</th>
+      <th>Type</th>
+      <th>Category</th>
+      <th>Subcategory</th>
+      <th class="text-end">Amount</th>
+      <th>Currency</th>
+      <th>Notes</th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for r in rows %}
+    <tr>
+      <td>{{ r.txn_date }}</td>
+      <td>{{ r.type }}</td>
+      <td>{{ r.category }}</td>
+      <td>{{ r.subcategory or "" }}</td>
+      <td class="text-end">{{ "%.2f"|format(r.amount) }}</td>
+      <td>{{ r.currency }}</td>
+      <td>{{ r.notes or "" }}</td>
+      <td class="text-nowrap">
+        <a class="btn btn-sm btn-outline-primary" href="/transactions/{{ r.id }}/edit">Edit</a>
+        <form method="post" action="/transactions/{{ r.id }}/delete" style="display:inline">
+          <button class="btn btn-sm btn-outline-danger" onclick="return confirm('Delete?')">Delete</button>
+        </form>
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<div class="alert alert-info">No transactions yet.</div>
+{% endif %}
 {% endblock %}

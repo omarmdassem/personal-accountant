@@ -1,11 +1,37 @@
-# env & venv
-.env
-.venv/
-
-# Python cache
+# --- Python ---
 __pycache__/
-*.pyc
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg-info/
+dist/
+build/
 
-# OS/editor
+# --- Virtual env ---
+.venv/
+venv/
+
+# --- OS / Editors ---
 .DS_Store
 .vscode/
+.idea/
+
+# --- SQLite data ---
+app.db
+data/*.db
+data/*.sqlite
+data/*.sqlite3
+
+# --- Env & secrets ---
+.env
+.env.*
+!.env.example
+
+# --- Tests / Coverage ---
+.pytest_cache/
+.coverage
+htmlcov/
+
+# --- Logs ---
+*.log

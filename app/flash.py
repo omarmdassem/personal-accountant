@@ -1,33 +1,68 @@
 # app/flash.py
-# Minimal "flash message" support: add_flash() stores a note in the session.
-# FlashMiddleware moves notes into request.state.flashes and clears the session copy.
+from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Dict, List, Tuple
 
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.requests import Request
+from fastapi import Request
+from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
+from starlette.responses import Response
 
-FlashKind = Literal["success", "error", "info", "warning"]
+_FLASH_KEY = "_flashes"  # where we store flashes inside the session
 
 
-def add_flash(request: Request, message: str, kind: FlashKind = "info") -> None:
-    """Store a one-time message in the session; shown after redirect."""
-    try:
-        flashes = request.session.get("flashes") or []
-        flashes.append({"kind": kind, "message": message})
-        request.session["flashes"] = flashes
-    except AssertionError:
-        # SessionMiddleware missing → silently skip (shouldn't happen in normal flow)
-        pass
+def _get_session_like(request: Request) -> Dict[str, Any]:
+    """
+    Return a mutable mapping to store flashes.
+    Prefer request.session if SessionMiddleware is installed,
+    otherwise fall back to a per-request dict (no persistence).
+    """
+    if "session" in request.scope:
+        # SessionMiddleware installed → safe to use request.session
+        return request.session  # type: ignore[return-value]
+
+    # Fallback: per-request store so templates can still read flashes
+    if not hasattr(request.state, "_flash_fallback"):
+        request.state._flash_fallback = {}
+    return request.state._flash_fallback
+
+
+def flash(request: Request, message: str, category: str = "info") -> None:
+    """
+    Queue a flash message for the next response.
+    Stored as list of (category, message) tuples.
+    """
+    store = _get_session_like(request)
+    items: List[Tuple[str, str]] = list(store.get(_FLASH_KEY, []))
+    items.append((category, message))
+    store[_FLASH_KEY] = items
+
+
+# Backwards compat alias (some modules might import add_flash)
+add_flash = flash
+
+
+def _pop_flashes(request: Request) -> List[Tuple[str, str]]:
+    """
+    Remove and return any queued flashes from the session/store.
+    """
+    store = _get_session_like(request)
+    items: List[Tuple[str, str]] = list(store.get(_FLASH_KEY, []))
+    if items:
+        # clear after reading so they don't show twice
+        store[_FLASH_KEY] = []
+    return items
 
 
 class FlashMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request: Request, call_next):
-        # Pull flashes out of session so they appear once
-        try:
-            flashes = request.session.pop("flashes", [])
-        except AssertionError:
-            flashes = []
-        request.state.flashes = flashes  # available to templates via "request"
+    """
+    Makes flashes available at request.state.flashes for templates.
+    Also ensures we don't crash if SessionMiddleware isn't present yet.
+    """
+
+    async def dispatch(
+        self, request: Request, call_next: RequestResponseEndpoint
+    ) -> Response:
+        # Pull flashes into request.state before the endpoint renders a template
+        request.state.flashes = _pop_flashes(request)
         response = await call_next(request)
         return response
