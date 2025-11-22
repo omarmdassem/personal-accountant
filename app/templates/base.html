@@ -1,39 +1,41 @@
-<!doctype html> <!-- document type: modern HTML -->
+<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" /> <!-- supports all characters -->
-  <meta name="viewport" content="width=device-width, initial-scale=1" /> <!-- mobile-friendly -->
-  <title>Personal Accountant</title> <!-- browser tab title -->
-  <script src="https://cdn.tailwindcss.com"></script> <!-- quick, zero-config CSS -->
-  <script src="https://unpkg.com/htmx.org@1.9.12"></script> <!-- small JS for partial updates -->
+  <meta charset="utf-8" />
+  <title>{% block title %}Personal Accountant{% endblock %}</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <script src="https://unpkg.com/htmx.org@1.9.12" defer></script>
+  <script>
+    document.documentElement.classList.add('js');
+  </script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
+  <style>
+    .container { max-width: 1100px; margin-inline: auto; padding: 1rem; }
+  </style>
 </head>
-<body class="min-h-screen bg-gray-50 text-gray-900"> <!-- base page styling -->
-  {% include "partials/flash.html" %}
-  <header class="bg-white border-b"> <!-- top bar -->
-    <div class="max-w-5xl mx-auto p-4 flex items-center justify-between">
-      <a href="/" class="font-semibold">Personal Accountant</a> <!-- app title -->
-      <nav class="text-sm space-x-4">
-          {% if request.session.get('user_id') %}
-          <!-- Wenn eingeloggt: zeige App-Navigation -->
-          <a href="/" class="text-blue-700">Dashboard</a>
-          <a href="#" class="text-blue-700">Transactions</a>
-          <a href="#" class="text-blue-700">Budgets</a>
-          <a href="#" class="text-blue-700">Import CSV</a>
-          <a href="#" class="text-blue-700">FX Rates</a>
-          <a href="/budget/lines/import">Import</a>
-          <!-- Logout-Link -->
-          <a href="/auth/signout" class="text-gray-600">Sign out</a>
-          {% else %}
-          <!-- Wenn abgemeldet: nur Signin/Signup -->
-          <a href="/auth/signin" class="text-blue-700">Anmelden</a>
-          <a href="/auth/signup" class="text-blue-700">Registrieren</a>
-          {% endif %}
-      </nav>
-    </div>
+<body>
+  <header class="container">
+    <nav>
+      <ul>
+        <li><strong><a href="/">Personal Accountant</a></strong></li>
+      </ul>
+      <ul>
+        <li><a href="/budget/lines">Budget Lines</a></li>
+        <li><a href="/budget/lines/import">Import</a></li>
+        <li><a href="/transactions">Transactions</a></li>
+        {% if request.session.get('user_id') %}
+          <li><a href="/auth/signout">Sign out</a></li>
+        {% else %}
+          <li><a href="/auth/signin">Sign in</a></li>
+          <li><a href="/auth/signup">Register</a></li>
+        {% endif %}
+      </ul>
+    </nav>
   </header>
 
-  <main class="max-w-5xl mx-auto p-6">
-    {% block content %}{% endblock %} <!-- pages insert their content here -->
+  <main class="container">
+    {% include "partials/flash.html" %}
+    {% block content %}{% endblock %}
   </main>
 </body>
 </html>

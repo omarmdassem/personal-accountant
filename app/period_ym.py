@@ -1,75 +1,112 @@
 # app/period_ym.py
-# Purpose: handle "month without day" as an integer YYYYMM (e.g., 202501).
-# UI can show/accept "MM/YY" (e.g., "01/25") and we convert both ways.
+"""
+Helpers for working with accounting periods.
 
-from typing import Optional, Tuple
+Definitions
+- ym: integer YYYYMM, e.g., 202501 for Jan 2025
+- "MM/YY": human input like "01/25"
+
+Public API (back-compat):
+- ym_from_date(date) -> int
+- mm_yy_to_ym("MM/YY") -> int
+- ym_to_mm_yy(YYYYMM) -> "MM/YY"
+- is_mm_yy("MM/YY") -> bool
+- parse_mm_yy("MM/YY") -> int          # alias of mm_yy_to_ym (back-compat)
+- format_ym(YYYYMM) -> "MM/YY"         # alias of ym_to_mm_yy (back-compat)
+- validate_line_frequency_fields(...)  # monthly / one_time field combo checks
+"""
+
+from __future__ import annotations
+
+from datetime import date
+from typing import Optional
+
+__all__ = [
+    "ym_from_date",
+    "mm_yy_to_ym",
+    "ym_to_mm_yy",
+    "is_mm_yy",
+    "parse_mm_yy",
+    "format_ym",
+    "validate_line_frequency_fields",
+]
 
 
-def parse_mm_yy(text: str) -> int:
+# ---------- Conversions ----------
+
+
+def ym_from_date(d: date) -> int:
+    """Convert a Python date to YYYYMM integer. Example: 2025-01-15 -> 202501."""
+    return d.year * 100 + d.month
+
+
+def _yyyy_from_two_digit(two_digit: int) -> int:
     """
-    Convert 'MM/YY' or 'MM/YYYY' to YYYYMM.
-    - Strips spaces
-    - Accepts '01/25' -> 202501, '12/2026' -> 202612
-    - Raises ValueError on bad input
+    Map two-digit year to 4-digit year.
+    Policy: 00-99 -> 2000-2099 (sufficient for personal finance horizon).
     """
-    s = text.strip()
-    if "/" not in s:
-        raise ValueError("Expected 'MM/YY' or 'MM/YYYY'")
-    mm_str, yy_str = [p.strip() for p in s.split("/", 1)]
+    if two_digit < 0 or two_digit > 99:
+        raise ValueError("YY must be 00–99")
+    return 2000 + two_digit
 
-    # month must be 1..12
-    if not mm_str.isdigit():
-        raise ValueError("Month must be digits")
-    mm = int(mm_str)
-    if mm < 1 or mm > 12:
-        raise ValueError("Month out of range (1-12)")
 
-    # year can be '25' or '2025'
-    if not yy_str.isdigit():
-        raise ValueError("Year must be digits")
-    if len(yy_str) == 2:
-        # Interpret two-digit years as 2000..2099
-        yy = 2000 + int(yy_str)
-    elif len(yy_str) == 4:
-        yy = int(yy_str)
-    else:
-        raise ValueError("Year must be 2 or 4 digits")
+def mm_yy_to_ym(mm_yy: str) -> int:
+    """
+    Convert 'MM/YY' string to YYYYMM integer.
+    Examples: '01/25' -> 202501, '12/30' -> 203012.
+    """
+    if not mm_yy or not isinstance(mm_yy, str):
+        raise ValueError("MM/YY string is required")
+    s = mm_yy.strip()
+    parts = s.split("/")
+    if len(parts) != 2:
+        raise ValueError("Invalid MM/YY format; expected 'MM/YY'")
+    mm, yy = parts[0].strip(), parts[1].strip()
+    if len(mm) != 2 or len(yy) != 2 or not mm.isdigit() or not yy.isdigit():
+        raise ValueError(
+            "Invalid MM/YY; use two digits for month and year, e.g. '01/25'"
+        )
+    m = int(mm)
+    if m < 1 or m > 12:
+        raise ValueError("Month must be 01–12")
+    y = _yyyy_from_two_digit(int(yy))
+    return y * 100 + m
 
-    return yy * 100 + mm  # YYYYMM
+
+def ym_to_mm_yy(ym: int) -> str:
+    """Convert YYYYMM integer to 'MM/YY' string."""
+    if not isinstance(ym, int) or ym < 10000:
+        raise ValueError("ym must be an integer like 202501")
+    y = ym // 100
+    m = ym % 100
+    if m < 1 or m > 12:
+        raise ValueError("Invalid ym month component")
+    return f"{m:02d}/{y % 100:02d}"
+
+
+def is_mm_yy(s: str) -> bool:
+    """Return True if string parses as 'MM/YY'."""
+    try:
+        mm_yy_to_ym(s)
+        return True
+    except Exception:
+        return False
+
+
+# Back-compat names used elsewhere in the app/templates
+
+
+def parse_mm_yy(mm_yy: str) -> int:
+    """Alias to keep older call sites working."""
+    return mm_yy_to_ym(mm_yy)
 
 
 def format_ym(ym: int) -> str:
-    """
-    Convert YYYYMM integer -> 'MM/YY' string (01/25).
-    """
-    year, month = to_year_month(ym)
-    return f"{month:02d}/{year % 100:02d}"
+    """Alias to keep older call sites working."""
+    return ym_to_mm_yy(ym)
 
 
-def to_year_month(ym: int) -> Tuple[int, int]:
-    """
-    Split YYYYMM -> (YYYY, MM). Raises ValueError if malformed.
-    """
-    if ym < 10000:  # minimal sensible value is 100001 (year 1000)
-        raise ValueError("YYYYMM is too small")
-    year = ym // 100
-    month = ym % 100
-    if month < 1 or month > 12:
-        raise ValueError("Invalid month in YYYYMM")
-    return year, month
-
-
-def in_range(ym: int, start_ym: Optional[int], end_ym: Optional[int]) -> bool:
-    """
-    True if ym is within [start_ym, end_ym].
-    - None start means open (-∞)
-    - None end means open (+∞)
-    """
-    if start_ym is not None and ym < start_ym:
-        return False
-    if end_ym is not None and ym > end_ym:
-        return False
-    return True
+# ---------- Validation for frequency-specific fields ----------
 
 
 def validate_line_frequency_fields(
@@ -80,20 +117,26 @@ def validate_line_frequency_fields(
     one_time_ym: Optional[int],
 ) -> None:
     """
-    Enforce field combos:
-    - monthly: start_ym required; end_ym optional; one_time_ym must be None
-    - one_time: one_time_ym required; start_ym/end_ym must be None
-    Raises ValueError on violations.
+    Validate field combos by frequency.
+    - monthly: require start_ym; allow end_ym >= start_ym; forbid one_time_ym
+    - one_time: require one_time_ym; forbid start_ym and end_ym
     """
-    if frequency == "monthly":
+    freq = (frequency or "").lower()
+
+    if freq == "monthly":
         if start_ym is None:
-            raise ValueError("monthly requires start_ym")
+            raise ValueError("start_ym required for monthly")
+        if end_ym is not None and end_ym < start_ym:
+            raise ValueError("end_ym must be >= start_ym")
         if one_time_ym is not None:
-            raise ValueError("monthly must not set one_time_ym")
-    elif frequency == "one_time":
+            raise ValueError("one_time_ym must be empty for monthly")
+        return
+
+    if freq == "one_time":
         if one_time_ym is None:
-            raise ValueError("one_time requires one_time_ym")
+            raise ValueError("one_time_ym required for one_time")
         if start_ym is not None or end_ym is not None:
-            raise ValueError("one_time must not set start_ym/end_ym")
-    else:
-        raise ValueError("frequency must be 'monthly' or 'one_time'")
+            raise ValueError("start_ym/end_ym must be empty for one_time")
+        return
+
+    raise ValueError("frequency must be 'monthly' or 'one_time'")
