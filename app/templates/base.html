@@ -5,13 +5,9 @@
   <title>{% block title %}Personal Accountant{% endblock %}</title>
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <script src="https://unpkg.com/htmx.org@1.9.12" defer></script>
-  <script>
-    document.documentElement.classList.add('js');
-  </script>
+  <script>document.documentElement.classList.add('js');</script>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
-  <style>
-    .container { max-width: 1100px; margin-inline: auto; padding: 1rem; }
-  </style>
+  <style>.container{max-width:1100px;margin-inline:auto;padding:1rem}</style>
 </head>
 <body>
   <header class="container">
@@ -23,6 +19,7 @@
         <li><a href="/budget/lines">Budget Lines</a></li>
         <li><a href="/budget/lines/import">Import</a></li>
         <li><a href="/transactions">Transactions</a></li>
+        <li><a href="/transactions/import">Tx Import</a></li>
         {% if request.session.get('user_id') %}
           <li><a href="/auth/signout">Sign out</a></li>
         {% else %}

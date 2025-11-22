@@ -13,29 +13,31 @@ from app.routers.auth import router as auth_router
 from app.routers.budget import router as budget_router
 from app.routers.system import router as system_router
 from app.routers.transactions import router as transactions_router
+from app.routers.transactions_import import router as tx_import_router
 
 settings = get_settings()
 app = FastAPI(title="Personal Accountant", version="0.1.0")
 templates = Jinja2Templates(directory="app/templates")
 
-# --- Middleware order matters: session first ---
+# Session first
 app.add_middleware(
     SessionMiddleware,
     secret_key=settings.secret_key,
-    max_age=1800,  # 30 minutes
+    max_age=1800,
     same_site="lax",
 )
 app.add_middleware(RequestLogMiddleware)
 app.add_middleware(FlashMiddleware)
 
-# --- Routers ---
+# Routers
 app.include_router(system_router)
 app.include_router(auth_router)
 app.include_router(budget_router)
 app.include_router(transactions_router)
+app.include_router(tx_import_router)
 
 
-# --- Home page ---
+# Home
 @app.get("/", response_class=HTMLResponse)
 def index(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})

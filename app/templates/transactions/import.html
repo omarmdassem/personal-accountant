@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}Import Transactions{% endblock %}
+
+{% block content %}
+<div class="container mx-auto max-w-xl">
+  <h1 class="text-2xl font-semibold mb-4">Import Transactions (CSV)</h1>
+
+  <p class="mb-4">
+    Expected header (exact order):
+    <code>date,type,category,subcategory,amount,currency,notes</code>
+  </p>
+
+  <p class="mb-6">
+    <a class="px-3 py-2 rounded bg-gray-200" href="/transactions/import/template">
+      Download template
+    </a>
+  </p>
+
+  {% if errors %}
+    <div class="mb-4 rounded border border-red-300 bg-red-50 text-red-800 p-3">
+      <p class="font-semibold mb-1">Import errors:</p>
+      <ul class="list-disc list-inside">
+        {% for e in errors %}
+          <li>{{ e }}</li>
+        {% endfor %}
+      </ul>
+    </div>
+  {% endif %}
+
+  <form method="post" action="/transactions/import" enctype="multipart/form-data">
+    <input type="file" name="file" accept=".csv,text/csv" required />
+    <div class="mt-4">
+      <button class="px-3 py-2 rounded bg-blue-600 text-white">Upload &amp; Import</button>
+    </div>
+  </form>
+
+  <div class="mt-6 text-sm text-gray-700">
+    <p><strong>Notes:</strong></p>
+    <ul class="list-disc list-inside">
+      <li><code>date</code> must be <code>YYYY-MM-DD</code>.</li>
+      <li><code>type</code> is <code>income</code> or <code>expense</code>.</li>
+      <li><code>currency</code> defaults to <code>EUR</code> if empty.</li>
+      <li>We compute the month (YYYYMM) automatically from the date.</li>
+    </ul>
+  </div>
+</div>
+{% endblock %}
